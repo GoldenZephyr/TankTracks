@@ -1,11 +1,9 @@
 import zmq
 import time
-import sys
 from lts300 import LTS300
 import zmq
 import signal
-
-
+import Parameters as p
 
 LTS300_X = '45874644'
 LTS300_Y = '45874637'
@@ -18,15 +16,12 @@ def sigint_handler(signo, stack_frame):
 
 def main():
 
-    ip_addr = 'localhost'
-    port_num = 5557
-
     context = zmq.Context()
     socket = context.socket(zmq.SUB)
     socket.setsockopt(zmq.CONFLATE, 1)
     socket.setsockopt(zmq.RCVTIMEO, 1000)
 
-    socket.connect('tcp://%s:%d' % (ip_addr, port_num))
+    socket.connect('tcp://%s:%d' % (p.TRACK_IP, p.TRACK_PORT))
     topicfilter = ''
     socket.setsockopt_string(zmq.SUBSCRIBE, topicfilter)
 
@@ -53,9 +48,9 @@ def main():
         dy = float(track_toks[1])
         print('%f, %f' % (dx, dy))
     
-        if abs(dx) > 30:
+        if abs(dx) > p.STAGE_DEADBAND:
             x_stage.jog(-dx/20)
-        if abs(dy) > 30:
+        if abs(dy) > p.STAGE_DEADBAND:
             y_stage.jog(dy/20)
             
         time.sleep(.1)
@@ -63,5 +58,6 @@ def main():
     x_stage.device.StopImmediate()
     y_stage.device.StopImmediate()
 
-if __name__== '__main__':
+
+if __name__ == '__main__':
     main()

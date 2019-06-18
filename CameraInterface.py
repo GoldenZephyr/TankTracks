@@ -13,15 +13,18 @@ import Parameters as p
 
 keep_running = True
 
+
 def send_img(socket, A, flags=0, copy=True, track=False):
     """send a numpy array with metadata"""
     return socket.send(A, flags, copy=copy, track=track)
+
 
 def sigint_handler(signo, stack_frame):
     # Called by the sigterm (i.e. ctrl-c) signal
     global keep_running
     print('Got ctrl-c!')
     keep_running = False
+
 
 def get_next_vid_ix(directory='videos'):
     files = os.listdir(directory)
@@ -33,6 +36,7 @@ def get_next_vid_ix(directory='videos'):
     else:
         return 0
 
+
 def main():
     signal.signal(signal.SIGINT, sigint_handler)
     do_save = True
@@ -41,19 +45,20 @@ def main():
     fourcc = cv2.VideoWriter_fourcc(*'mp4v')
     vout = cv2.VideoWriter()
     vid_fn = get_next_vid_ix()
-    vout.open('videos/%04d.mp4' % vid_fn, fourcc, fps, sz)
+    vout.open('videos/%04d.mp4' % vid_fn, fourcc, fps, sz, False)
 
     context = zmq.Context()
     socket = context.socket(zmq.PUB)
     socket.bind('tcp://*:%s' % p.VIDEO_PORT)
 
-    cam = PGCamera(0)
+    cam = PGCamera(0, disp_width=1920, disp_height=1080)
     cam.start_capture()
 
     t_loop = time.time() 
     while keep_running:
         t1 = time.time()
         frame = cam.get_frame()
+        #print(frame.shape)
         #print('\nFrame grab took %f seconds' % (time.time() - t1))
 
         t2 = time.time()
@@ -72,6 +77,7 @@ def main():
             print('Running too slow! %f' % t_wait)
         t_loop = time.time()
     vout.release()
+
 
 if __name__ == '__main__':
     main()

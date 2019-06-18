@@ -23,9 +23,10 @@ def draw_settings(ctrl_frame, settings, low_threshold, high_threshold):
 
 
 def apply_canny(frame, high, low, kernel):
-    frame_ret = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-    frame_ret = cv2.Canny(frame_ret, low, high, kernel)
-    frame_ret = cv2.cvtColor(frame_ret, cv2.COLOR_GRAY2BGR)
+    #frame_ret = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+    #frame_ret = cv2.Canny(frame_ret, low, high, kernel)
+    frame_ret = cv2.Canny(frame, low, high, kernel)
+    #frame_ret = cv2.cvtColor(frame_ret, cv2.COLOR_GRAY2BGR)
     return frame_ret
 
 
@@ -34,7 +35,8 @@ def recv_img(socket, flags=0, copy=True, track=False):
     msg = socket.recv(flags=flags, copy=copy, track=track)
     buf = memoryview(msg)
     A = np.frombuffer(buf, np.uint8)
-    return A.reshape((p.IMG_HEIGHT, p.IMG_WIDTH, 3))
+    #return A.reshape((p.IMG_HEIGHT, p.IMG_WIDTH, 3))
+    return A.reshape((p.IMG_HEIGHT, p.IMG_WIDTH))
 
 
 def sigint_handler(signo, stack_frame):
@@ -58,7 +60,7 @@ def main():
     video_socket = context.socket(zmq.SUB)
     video_socket.setsockopt(zmq.CONFLATE, 1)
     video_socket.setsockopt(zmq.RCVTIMEO, 1000)
-    video_socket.connect('tcp://localhost:%d' % p.VIDEO_PORT)
+    video_socket.connect('tcp://%s:%d' % (p.VIDEO_IP, p.VIDEO_PORT))
     topicfilter = ''
     video_socket.setsockopt_string(zmq.SUBSCRIBE, topicfilter)
 
@@ -81,7 +83,7 @@ def main():
         frame_blur = cv2.GaussianBlur(frame, (0,0), 13)
         frame = cv2.addWeighted(frame, 1.5, frame_blur, -0.5, 0)
         frame_canny = apply_canny(frame, low_threshold[0], high_threshold[0], 3)
-        frame_canny = cv2.cvtColor(frame_canny, cv2.COLOR_BGR2GRAY)
+        #frame_canny = cv2.cvtColor(frame_canny, cv2.COLOR_BGR2GRAY)
         contours, hierarchy = cv2.findContours(frame_canny, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
         cvui.context(p.VIDEO_WINDOW_NAME)
