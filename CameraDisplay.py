@@ -12,6 +12,7 @@ import Parameters as p
 
 keep_running = True
 
+
 def draw_settings(ctrl_frame, settings, low_threshold, high_threshold):
         settings.begin(ctrl_frame)
         if not settings.isMinimized():
@@ -20,11 +21,13 @@ def draw_settings(ctrl_frame, settings, low_threshold, high_threshold):
             cvui.space(20) # add 20px of empty space
         settings.end()
 
+
 def apply_canny(frame, high, low, kernel):
     frame_ret = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
     frame_ret = cv2.Canny(frame_ret, low, high, kernel)
     frame_ret = cv2.cvtColor(frame_ret, cv2.COLOR_GRAY2BGR)
     return frame_ret
+
 
 def recv_img(socket, flags=0, copy=True, track=False):
     """recv a numpy array"""
@@ -33,9 +36,11 @@ def recv_img(socket, flags=0, copy=True, track=False):
     A = np.frombuffer(buf, np.uint8)
     return A.reshape((p.IMG_HEIGHT, p.IMG_WIDTH, 3))
 
+
 def sigint_handler(signo, stack_frame):
     global keep_running
     keep_running = False
+
 
 def main():
     signal.signal(signal.SIGINT, sigint_handler)
@@ -45,13 +50,14 @@ def main():
     ctrl_frame= np.zeros((p.IMG_HEIGHT, p.IMG_WIDTH, 3), np.uint8)
 
     settings = EnhancedWindow(10, 50, 270, 270, 'Settings')
-    control = EnhancedWindow(10,300,270,100,'Control')
+    control = EnhancedWindow(10, 300, 270, 100, 'Control')
     cvui.init(p.CTRL_WINDOW_NAME)
     cvui.init(p.VIDEO_WINDOW_NAME)
 
     context = zmq.Context()
     video_socket = context.socket(zmq.SUB)
     video_socket.setsockopt(zmq.CONFLATE, 1)
+    video_socket.setsockopt(zmq.RCVTIMEO, 1000)
     video_socket.connect('tcp://localhost:%d' % p.VIDEO_PORT)
     topicfilter = ''
     video_socket.setsockopt_string(zmq.SUBSCRIBE, topicfilter)
@@ -61,11 +67,17 @@ def main():
 
     low_threshold = [50]
     high_threshold = [150]
-    target_pos = np.array([1,1,])
+    target_pos = np.array([1,1])
     target_track_ok = False
 
     while keep_running:
-        frame = recv_img(video_socket)
+        try:
+            frame = recv_img(video_socket)
+        except zmq.Again as e:
+            print('Timed Out!')
+            time.sleep(1)
+            continue
+
         frame_blur = cv2.GaussianBlur(frame, (0,0), 13)
         frame = cv2.addWeighted(frame, 1.5, frame_blur, -0.5, 0)
         frame_canny = apply_canny(frame, low_threshold[0], high_threshold[0], 3)

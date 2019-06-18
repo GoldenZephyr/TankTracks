@@ -9,7 +9,7 @@ IMG_WIDTH = 831
 IMG_HEIGHT = 685
 VIDEO_PORT = 5556
 TRACK_PORT = 5557
-FPS = 30
+FPS = 50
 BBOX_AREA_THRESH = 100
 
 TARGET_JUMP_THRESH = 300 # if the bounding box jumps by this much, assume it's an outlier

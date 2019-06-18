@@ -18,12 +18,14 @@ def sigint_handler(signo, stack_frame):
 
 def main():
 
-    ip_addr = '134.89.13.35'
+    ip_addr = 'localhost'
     port_num = 5557
 
     context = zmq.Context()
     socket = context.socket(zmq.SUB)
-    socket.setsockopt(zmq.CONFLATE,1)
+    socket.setsockopt(zmq.CONFLATE, 1)
+    socket.setsockopt(zmq.RCVTIMEO, 1000)
+
     socket.connect('tcp://%s:%d' % (ip_addr, port_num))
     topicfilter = ''
     socket.setsockopt_string(zmq.SUBSCRIBE, topicfilter)
@@ -39,12 +41,17 @@ def main():
     signal.signal(signal.SIGINT, sigint_handler)
     
     while keep_going:
-    
-        track_pos_str = socket.recv_string()
+
+        try:
+            track_pos_str = socket.recv_string()
+        except zmq.Again as e:
+            print('Timed out!')
+            time.sleep(1)
+            continue
         track_toks = track_pos_str.split(' ')
         dx = float(track_toks[0])
         dy = float(track_toks[1])
-        print('%f, %f' % (dx,dy))
+        print('%f, %f' % (dx, dy))
     
         if abs(dx) > 30:
             x_stage.jog(-dx/20)
