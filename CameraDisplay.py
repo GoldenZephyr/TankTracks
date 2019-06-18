@@ -20,7 +20,6 @@ def draw_settings(ctrl_frame, settings, low_threshold, high_threshold):
             cvui.space(20) # add 20px of empty space
         settings.end()
 
-
 def apply_canny(frame, high, low, kernel):
     frame_ret = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
     frame_ret = cv2.Canny(frame_ret, low, high, kernel)
@@ -41,6 +40,8 @@ def sigint_handler(signo, stack_frame):
 def main():
     signal.signal(signal.SIGINT, sigint_handler)
     frame = np.zeros((p.IMG_HEIGHT, p.IMG_WIDTH,3), np.uint8)
+    resize_scale = 0.3
+    frame_rescaled = np.zeros((int(p.IMG_HEIGHT * resize_scale), int(p.IMG_WIDTH * resize_scale), 3), np.uint8)
     ctrl_frame= np.zeros((p.IMG_HEIGHT, p.IMG_WIDTH, 3), np.uint8)
 
     settings = EnhancedWindow(10, 50, 270, 270, 'Settings')
@@ -49,25 +50,31 @@ def main():
     cvui.init(p.VIDEO_WINDOW_NAME)
 
     context = zmq.Context()
-    socket = context.socket(zmq.SUB)
-    socket.setsockopt(zmq.CONFLATE, 1)
-    socket.connect('tcp://localhost:%d' % p.PORT)
+    video_socket = context.socket(zmq.SUB)
+    video_socket.setsockopt(zmq.CONFLATE, 1)
+    video_socket.connect('tcp://localhost:%d' % p.VIDEO_PORT)
     topicfilter = ''
-    socket.setsockopt_string(zmq.SUBSCRIBE, topicfilter)
+    video_socket.setsockopt_string(zmq.SUBSCRIBE, topicfilter)
+
+    track_socket = context.socket(zmq.PUB)
+    track_socket.bind('tcp://*:%s' % p.TRACK_PORT)
+
     low_threshold = [50]
     high_threshold = [150]
     target_pos = np.array([1,1,])
+    target_track_ok = False
 
     while keep_running:
-        frame = recv_img(socket)
+        frame = recv_img(video_socket)
+        frame_blur = cv2.GaussianBlur(frame, (0,0), 13)
+        frame = cv2.addWeighted(frame, 1.5, frame_blur, -0.5, 0)
         frame_canny = apply_canny(frame, low_threshold[0], high_threshold[0], 3)
         frame_canny = cv2.cvtColor(frame_canny, cv2.COLOR_BGR2GRAY)
         contours, hierarchy = cv2.findContours(frame_canny, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-        print(contours)
 
         cvui.context(p.VIDEO_WINDOW_NAME)
         if cvui.mouse(cvui.IS_DOWN):
-            target_pos = np.array((cvui.mouse().x, cvui.mouse().y))
+            target_pos = np.array((cvui.mouse().x/resize_scale, cvui.mouse().y/resize_scale))
             target_track_ok = True
 
         bounding_rects = []
@@ -92,9 +99,18 @@ def main():
             target_pos = target_pos * p.LP_IIR_DECAY + target_pos_obs * (1 - p.LP_IIR_DECAY)
             cv2.circle(frame, (int(target_pos[0]), int(target_pos[1])), 75, (255,0,0),3)
 
+        # send track position
+        if target_track_ok: # this means the track has been initialized
+            dx = target_pos[0] - p.IMG_WIDTH / 2
+            dy = target_pos[1] - p.IMG_HEIGHT / 2
+            print('%f, %f' % (dx, dy))
+            track_socket.send_string('%f %f' % (dx, dy)) # 'wasteful', but easier debugging for now
 
+
+        #frame_rescaled = cv2.resize(frame, (int(p.IMG_WIDTH * resize_scale), int(p.IMG_HEIGHT * resize_scale)))
+        frame_rescaled = cv2.resize(frame, (int(p.IMG_WIDTH * resize_scale), int(p.IMG_HEIGHT * resize_scale)))
         cvui.update(p.VIDEO_WINDOW_NAME)
-        cv2.imshow(p.VIDEO_WINDOW_NAME, frame)
+        cv2.imshow(p.VIDEO_WINDOW_NAME, frame_rescaled)
 
         cvui.context(p.CTRL_WINDOW_NAME)
         draw_settings(ctrl_frame, settings, low_threshold, high_threshold)

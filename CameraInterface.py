@@ -43,10 +43,9 @@ def main():
     vid_fn = get_next_vid_ix()
     vout.open('videos/%04d.mp4' % vid_fn, fourcc, fps, sz)
 
-    port = p.PORT
     context = zmq.Context()
     socket = context.socket(zmq.PUB)
-    socket.bind('tcp://*:%s' % port)
+    socket.bind('tcp://*:%s' % p.VIDEO_PORT)
 
     cam = PGCamera(0)
     cam.start_capture()
