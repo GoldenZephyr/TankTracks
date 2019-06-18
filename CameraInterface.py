@@ -52,11 +52,18 @@ def main():
 
     t_loop = time.time() 
     while keep_running:
+        t1 = time.time()
         frame = cam.get_frame()
+        print('\nFrame grab took %f seconds' % (time.time() - t1))
+
+        t2 = time.time()
         send_img(socket, frame)
+        print('send_img took %f seconds' % (time.time() - t2))
 
         if do_save:
+            t3 = time.time()
             vout.write(frame)
+            print('Frame write took %f seconds' % (time.time() - t3))
         # this is the line where we want to send the image (i.e. before sleep) ->
         t_wait = 1/fps - (time.time() - t_loop)
         if t_wait > 0:
