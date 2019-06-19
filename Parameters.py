@@ -16,7 +16,7 @@ VIDEO_IP = 'localhost'
 TRACK_PORT = 5557
 TRACK_IP = 'localhost'
 
-FPS = 30
+FPS = 60
 BBOX_AREA_THRESH = 100
 
 TARGET_JUMP_THRESH = 300 # if the bounding box jumps by this much, assume it's an outlier
