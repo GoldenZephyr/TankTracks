@@ -46,9 +46,9 @@ def sigint_handler(signo, stack_frame):
 
 def main():
     signal.signal(signal.SIGINT, sigint_handler)
-    frame = np.zeros((p.IMG_HEIGHT, p.IMG_WIDTH,3), np.uint8)
-    resize_scale = 0.3
-    frame_rescaled = np.zeros((int(p.IMG_HEIGHT * resize_scale), int(p.IMG_WIDTH * resize_scale), 3), np.uint8)
+    #frame = np.zeros((p.IMG_HEIGHT, p.IMG_WIDTH,3), np.uint8)
+    resize_scale = 1
+    #frame_rescaled = np.zeros((int(p.IMG_HEIGHT * resize_scale), int(p.IMG_WIDTH * resize_scale), 3), np.uint8)
     ctrl_frame= np.zeros((p.IMG_HEIGHT, p.IMG_WIDTH, 3), np.uint8)
 
     settings = EnhancedWindow(10, 50, 270, 270, 'Settings')
@@ -80,8 +80,9 @@ def main():
             time.sleep(1)
             continue
 
-        frame_blur = cv2.GaussianBlur(frame, (0,0), 13)
-        frame = cv2.addWeighted(frame, 1.5, frame_blur, -0.5, 0)
+        frame = cv2.resize(frame, (p.IMG_DISP_WIDTH, p.IMG_DISP_HEIGHT))
+        #frame_blur = cv2.GaussianBlur(frame, (0,0), 13)
+        #frame = cv2.addWeighted(frame, 1.5, frame_blur, -0.5, 0)
         frame_canny = apply_canny(frame, low_threshold[0], high_threshold[0], 3)
         #frame_canny = cv2.cvtColor(frame_canny, cv2.COLOR_BGR2GRAY)
         contours, hierarchy = cv2.findContours(frame_canny, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
@@ -98,7 +99,7 @@ def main():
                 br = cv2.boundingRect(c)
                 x,y,w,h = cv2.boundingRect(c)
                 cv2.circle(frame, (int(x + w/2), int(y+h/2)), 50, (0,255,0),3)
-                #cv2.rectangle(frame, br, (0, 255, 0), 3)
+                cv2.rectangle(frame, br, (0, 255, 0), 3)
                 bounding_rects.append(br)
                 br_centers[indx,:] = (x + w/2, y + h/2)
 
@@ -115,16 +116,16 @@ def main():
 
         # send track position
         if target_track_ok: # this means the track has been initialized
-            dx = target_pos[0] - p.IMG_WIDTH / 2
-            dy = target_pos[1] - p.IMG_HEIGHT / 2
+            dx = target_pos[0] - p.IMG_DISP_WIDTH / 2
+            dy = target_pos[1] - p.IMG_DISP_HEIGHT / 2
             print('%f, %f' % (dx, dy))
             track_socket.send_string('%f %f' % (dx, dy)) # 'wasteful', but easier debugging for now
 
 
         #frame_rescaled = cv2.resize(frame, (int(p.IMG_WIDTH * resize_scale), int(p.IMG_HEIGHT * resize_scale)))
-        frame_rescaled = cv2.resize(frame, (int(p.IMG_WIDTH * resize_scale), int(p.IMG_HEIGHT * resize_scale)))
+        #frame_rescaled = cv2.resize(frame_canny, (int(p.IMG_WIDTH * resize_scale), int(p.IMG_HEIGHT * resize_scale)))
         cvui.update(p.VIDEO_WINDOW_NAME)
-        cv2.imshow(p.VIDEO_WINDOW_NAME, frame_rescaled)
+        cv2.imshow(p.VIDEO_WINDOW_NAME, frame)
 
         cvui.context(p.CTRL_WINDOW_NAME)
         draw_settings(ctrl_frame, settings, low_threshold, high_threshold)

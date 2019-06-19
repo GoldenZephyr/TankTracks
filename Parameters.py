@@ -8,12 +8,15 @@ LTS300_Y = '45874637'
 IMG_WIDTH = 1920
 IMG_HEIGHT = 1080
 
+IMG_DISP_WIDTH = 831
+IMG_DISP_HEIGHT = 685
+
 VIDEO_PORT = 5556
 VIDEO_IP = 'localhost'
 TRACK_PORT = 5557
 TRACK_IP = 'localhost'
 
-FPS = 60
+FPS = 30
 BBOX_AREA_THRESH = 100
 
 TARGET_JUMP_THRESH = 300 # if the bounding box jumps by this much, assume it's an outlier
