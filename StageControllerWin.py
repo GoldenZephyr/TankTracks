@@ -1,18 +1,16 @@
-import zmq
 import time
 from lts300 import LTS300
 import zmq
 import signal
 import Parameters as p
 
-LTS300_X = '45874644'
-LTS300_Y = '45874637'
-
 keep_going = True
+
 
 def sigint_handler(signo, stack_frame):
     global keep_going
     keep_going = False
+
 
 def main():
 
@@ -25,8 +23,8 @@ def main():
     topicfilter = ''
     socket.setsockopt_string(zmq.SUBSCRIBE, topicfilter)
 
-    x_stage = LTS300(LTS300_X)
-    y_stage = LTS300(LTS300_Y)
+    x_stage = LTS300(p.LTS300_X)
+    y_stage = LTS300(p.LTS300_Y)
     x_stage.initialize()
     y_stage.initialize()
 
@@ -47,11 +45,13 @@ def main():
         dx = float(track_toks[0])
         dy = float(track_toks[1])
         print('%f, %f' % (dx, dy))
-    
-        if abs(dx) > p.STAGE_DEADBAND:
-            x_stage.jog(-dx/20)
-        if abs(dy) > p.STAGE_DEADBAND:
-            y_stage.jog(dy/20)
+
+        # NOTE: this needs to be tuned/figured out. Here we need to map from pixel space to mm.
+        # Currently it's just a random guess
+        if abs(dx/p.X_MOVE_SCALE) > p.STAGE_DEADBAND:
+            x_stage.jog(-dx/p.X_MOVE_SCALE)  # <- tune this
+        if abs(dy/p.Y_MOVE_SCALE) > p.STAGE_DEADBAND:
+            y_stage.jog(dy/p.Y_MOVE_SCALE)  # <- tune this
             
         time.sleep(.1)
         

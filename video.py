@@ -34,7 +34,7 @@ class PGCamera(VideoSource):
         image = self.camera.retrieveBuffer()
         row_bytes = float(len(image.getData())) / float(image.getRows());
         new_frame = np.array(image.getData(), dtype="uint8").reshape((image.getRows(), image.getCols()) );
-        new_frame = cv2.resize(new_frame,(int(self.disp_width),int(self.disp_height)))
+        #new_frame = cv2.resize(new_frame,(int(self.disp_width),int(self.disp_height)))
         #new_frame = cv2.cvtColor(new_frame, cv2.COLOR_GRAY2BGR)
     
         return new_frame
