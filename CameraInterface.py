@@ -2,7 +2,6 @@
 import argparse
 import time
 import signal
-import cv2
 import numpy as np
 
 import zmq

@@ -58,8 +58,10 @@ class LTS300:
                     # device.MoveContinuous(Thorlabs.MotionControl.GenericMotorCLI.MotorDirection.Backward)
                 self.device.SetMoveRelativeDistance(Decimal(jog))
                 self.device.MoveRelative(max_wait)
-            except Thorlabs.MotionControl.DeviceManagerCLI.DeviceMovingException:
-                pass
+            #except Thorlabs.MotionControl.DeviceManagerCLI.DeviceMovingException as ex:
+            except Thorlabs.MotionControl.DeviceManagerCLI.MoveTimeoutException as ex:
+                print('Jog time exceeded wait time!')
+
         
 
 

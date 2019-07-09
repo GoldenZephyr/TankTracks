@@ -6,14 +6,16 @@ CTRL_WINDOW_NAME = 'BB-Tool ' + VERSION + ' : Control'
 ##############
 LTS300_X = '45874644'
 LTS300_Y = '45874637'
+LTS300_Z = '45968230'
 
+STAGE_USE_Z = True
 
 # Spotter Camera Params
 #######################
 CAMERA_ID_SPOTTER = 0
 
 IMG_WIDTH_SPOTTER = 1920
-IMG_HEIGHT_SPOTTER = 1072
+IMG_HEIGHT_SPOTTER = 1080
 IMG_DISP_WIDTH_SPOTTER = int(IMG_WIDTH_SPOTTER / 4)
 IMG_DISP_HEIGHT_SPOTTER = int(IMG_HEIGHT_SPOTTER / 4)
 
@@ -24,7 +26,7 @@ FPS_SPOTTER = 30
 VIDEO_PORT_SPOTTER = 5556
 VIDEO_IP_SPOTTER = 'localhost'
 
-ROTATE_SPOTTER = True
+ROTATE_SPOTTER = False
 
 
 # Zoom Camera Params
@@ -40,6 +42,13 @@ FPS_ZOOM = 30
 
 VIDEO_PORT_ZOOM = 5555
 VIDEO_IP_ZOOM = 'localhost'
+
+# Autofocus Params
+##################
+
+AUTOFOCUS_JOG = 10 # mm
+AUTOFOCUS_DISTANCE = 150
+N_AUTOFOCUS_JOG = int(AUTOFOCUS_DISTANCE / AUTOFOCUS_JOG)
 
 # Tracking Params
 #################
