@@ -11,7 +11,7 @@ class VideoSource:
 # Generic class for Point Grey Camera using PyCapture2 API
 class PGCamera(VideoSource):
 
-    def __init__(self,camera_id,disp_width=831,disp_height=685,raw_width=2464,raw_height=2056):
+    def __init__(self, camera_id):
         try:
             self.bus = PyCapture2.BusManager()
             self.num_cams = self.bus.getNumOfCameras()
@@ -20,24 +20,15 @@ class PGCamera(VideoSource):
             self.camera.connect(self.uid)
             self.print_build_info()
             self.print_camera_info()
-            self.disp_width = disp_width
-            self.disp_height = disp_height
-            self.raw_width = raw_width
-            self.raw_height = raw_height
         except Exception as e:
             print(e)
-            print ('Could not load camera, will now exit.')
+            print('Could not load camera, will now exit.')
             exit()
             
-    def get_frame(self):
-    
+    def read(self):
         image = self.camera.retrieveBuffer()
-        row_bytes = float(len(image.getData())) / float(image.getRows());
-        new_frame = np.array(image.getData(), dtype="uint8").reshape((image.getRows(), image.getCols()) );
-        #new_frame = cv2.resize(new_frame,(int(self.disp_width),int(self.disp_height)))
-        #new_frame = cv2.cvtColor(new_frame, cv2.COLOR_GRAY2BGR)
-    
-        return new_frame
+        new_frame = np.array(image.getData(), dtype="uint8").reshape((image.getRows(), image.getCols()))
+        return (None, new_frame)
     
     def start_capture(self):
         self.camera.startCapture()
@@ -59,8 +50,3 @@ class PGCamera(VideoSource):
         print('Resolution - %s' % cam_info.sensorResolution)
         print('Firmware version - %s' % cam_info.firmwareVersion)
         print('Firmware build time - %s' % cam_info.firmwareBuildTime)
-    
-    
-#class VideoFile(VideoSource):
-    
-        

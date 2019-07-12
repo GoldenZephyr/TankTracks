@@ -36,7 +36,7 @@ def recv_img(socket, flags=0, copy=True, track=False):
     msg = socket.recv(flags=flags, copy=copy, track=track)
     buf = memoryview(msg)
     A = np.frombuffer(buf, np.uint8)
-    return A.reshape((p.IMG_HEIGHT_SPOTTER, p.IMG_WIDTH_SPOTTER))
+    return A.reshape((p.IMG_HEIGHT_SPOTTER, p.IMG_WIDTH_SPOTTER, 3))
 
 
 def sigint_handler(signo, stack_frame):
@@ -166,7 +166,7 @@ def main():
         cvui.update(p.VIDEO_WINDOW_NAME)
         cv2.imshow(p.VIDEO_WINDOW_NAME, frame)
         if save_video:
-            vout.write(frame);
+            vout.write(frame)
 
         cvui.context(p.CTRL_WINDOW_NAME)
         draw_settings(ctrl_frame, settings, low_threshold, high_threshold)
