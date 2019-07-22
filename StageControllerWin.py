@@ -17,41 +17,61 @@ def main():
     context = zmq.Context()
     socket = context.socket(zmq.SUB)
     socket.setsockopt(zmq.CONFLATE, 1)
-    socket.setsockopt(zmq.RCVTIMEO, 1000)
-
+    socket.setsockopt(zmq.RCVTIMEO, 250)
     socket.connect('tcp://%s:%d' % (p.TRACK_IP, p.TRACK_PORT))
     topicfilter = ''
     socket.setsockopt_string(zmq.SUBSCRIBE, topicfilter)
 
+    pos_pub = context.socket(zmq.PUB)
+    pos_pub.bind('tcp://*:%s' % p.STAGE_POSITION_PORT)
+
     x_stage = LTS300(p.LTS300_X)
     y_stage = LTS300(p.LTS300_Y)
+    z_stage = LTS300(p.LTS300_Z)
     x_stage.initialize()
     y_stage.initialize()
+    z_stage.initialize()
 
     time.sleep(2)
     x_stage.device.StartPolling(50)
     y_stage.device.StartPolling(50)
+    z_stage.device.StartPolling(50)
     signal.signal(signal.SIGINT, sigint_handler)
     
     while keep_going:
+        px = x_stage.device.Position
+        py = y_stage.device.Position
+        pz = z_stage.device.Position
+        pos_pub.send_string('%s %s %s' % (px, py, pz))
 
         try:
             track_pos_str = socket.recv_string()
         except zmq.Again as e:
-            print('Timed out!')
-            time.sleep(1)
+            print('No Message!')
             continue
         track_toks = track_pos_str.split(' ')
         dx = float(track_toks[0])
         dy = float(track_toks[1])
-        print('%f, %f' % (dx, dy))
+        dz = float(track_toks[2])
+        print('%f, %f, %f' % (dx, dy, dz))
 
         # NOTE: this needs to be tuned/figured out. Here we need to map from pixel space to mm.
         # Currently it's just a random guess
         if abs(dx/p.X_MOVE_SCALE) > p.STAGE_DEADBAND:
-            x_stage.jog(-dx/p.X_MOVE_SCALE)  # <- tune this
+            try:
+                x_stage.jog(-dx/p.X_MOVE_SCALE, 0, 200)  # <- tune this (MOVE_SCALE)
+            except:
+                pass
         if abs(dy/p.Y_MOVE_SCALE) > p.STAGE_DEADBAND:
-            y_stage.jog(dy/p.Y_MOVE_SCALE)  # <- tune this
+            try:
+                y_stage.jog(-dy/p.Y_MOVE_SCALE, 0, 300)  # <- tune this (MOVE_SCALE)
+            except:
+                pass
+
+        try:
+            z_stage.jog(dz/p.Z_MOVE_SCALE, 0, 300)
+        except:
+            pass
             
         time.sleep(.1)
         

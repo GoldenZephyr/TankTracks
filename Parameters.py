@@ -10,6 +10,11 @@ LTS300_Z = '45968230'
 
 STAGE_USE_Z = True
 
+STAGE_POSITION_IP = 'localhost'
+STAGE_POSITION_PORT = 5561
+
+STAGE_TANK_OFFSET = 10  # mm
+
 # Spotter Camera Params
 #######################
 CAMERA_ID_SPOTTER = 1
@@ -45,7 +50,10 @@ FPS_ZOOM = 30
 VIDEO_PORT_ZOOM = 5555
 VIDEO_IP_ZOOM = 'localhost'
 
-ROTATE_ZOOM = 0
+ROTATE_ZOOM = 2
+
+# distance from front of macro to focus plane is 140.38 mm
+FOCUS_DISTANCE_ZOOM = 140.48 + 20  # mm, NOTE: This is the distance from the LL camera face, *not* from the macro lens
 
 # Autofocus Params
 ##################
@@ -54,6 +62,7 @@ AUTOFOCUS_ENABLE = True
 AUTOFOCUS_JOG = 10  # mm
 AUTOFOCUS_DISTANCE = 150
 N_AUTOFOCUS_JOG = int(AUTOFOCUS_DISTANCE / AUTOFOCUS_JOG)
+AUTOFOCUS_IIR_DECAY = .85
 
 AUTOFOCUS_PORT = 5558
 AUTOFOCUS_IP = 'localhost'
@@ -61,22 +70,30 @@ AUTOFOCUS_IP = 'localhost'
 CURRENT_FOCUS_PORT = 5559
 CURRENT_FOCUS_IP = 'localhost'
 
+FOCUS_ROI_PORT = 5560
+FOCUS_ROI_IP = 'localhost'
+
+EXPECTED_SHARPNESS_THRESHOLD = .6
+
 # Tracking Params
 #################
 
 TRACK_PORT = 5557
 TRACK_IP = 'localhost'
 
-BBOX_AREA_THRESH = 300
+BBOX_AREA_THRESH = 1000
 
 TARGET_JUMP_THRESH = 300  # if the bounding box jumps by this much, assume it's an outlier
 LP_IIR_DECAY = .5  # LP_IIR_DECAY * est_current + (1 - LP_IIR_DECAY) * obs_current
 LP_IIR_DECAY_2 = .7
 
-X_MOVE_SCALE = 20  # Needs to be calibrated!!!!
-Y_MOVE_SCALE = 20
+X_MOVE_SCALE = 5  # Needs to be calibrated!!!!
+Y_MOVE_SCALE = 5
+Z_MOVE_SCALE = 20
 
-STAGE_DEADBAND = 1  # mm space (currently not calibrated though
+STAGE_DEADBAND = .3  # mm space (currently not calibrated though)
 
-ARROW_MOVE_RATE = 5
+ARROW_MOVE_RATE = 1
 
+MACRO_LL_CENTER = (182, 284)  # center of macro FoV in LL frame (pixels)
+MACRO_FOV_OFFSET = (MACRO_LL_CENTER[0] - IMG_WIDTH_SPOTTER / 2, MACRO_LL_CENTER[1] - IMG_HEIGHT_SPOTTER / 2)  # offset (in LL pixel space) of the Macro FoV relative to spotter FoV

@@ -17,7 +17,7 @@ def main():
     while 1:
         inp = input('\nFull Autofocus: Enter\nCustom Autofocus: a enter\nRead Autofocus: b enter\nSet Focus: c enter\nRefine Focus: d enter\n>')
         if inp == '':
-            af_msg = AutofocusMessage(0, 255, 10)
+            af_msg = AutofocusMessage(0, 255, 1)
             socket_pub.send_pyobj(af_msg)
         elif inp == 'a':
             inp = input('Please enter custom autofocus: <min>.<max>.<step>: ')

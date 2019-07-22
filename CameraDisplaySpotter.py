@@ -10,6 +10,7 @@ import keyboard
 from EnhancedWindow import EnhancedWindow
 import cvui
 import Parameters as p
+import Messages as m
 
 keep_running = True
 
@@ -64,6 +65,8 @@ def main():
     cvui.init(p.VIDEO_WINDOW_NAME)
 
     context = zmq.Context()
+
+    # Receive video frames from camera
     video_socket = context.socket(zmq.SUB)
     video_socket.setsockopt(zmq.CONFLATE, 1)
     video_socket.setsockopt(zmq.RCVTIMEO, 1000)
@@ -71,17 +74,58 @@ def main():
     topicfilter = ''
     video_socket.setsockopt_string(zmq.SUBSCRIBE, topicfilter)
 
+    # receive stage location updates from stage controller
+    stage_loc_sub = context.socket(zmq.SUB)
+    stage_loc_sub.setsockopt(zmq.CONFLATE, 1)
+    stage_loc_sub.setsockopt(zmq.RCVTIMEO, 0)
+    stage_loc_sub.connect('tcp://%s:%d' % (p.STAGE_POSITION_IP, p.STAGE_POSITION_PORT))
+    topicfilter = ''
+    stage_loc_sub.setsockopt_string(zmq.SUBSCRIBE, topicfilter)
+    stage_x = None
+    stage_y = None
+    stage_z = None
+
+    # Receive focus updates from camera
+    focus_sub = context.socket(zmq.SUB)
+    focus_sub.setsockopt(zmq.CONFLATE, 1)
+    focus_sub.setsockopt(zmq.RCVTIMEO, 0)
+    focus_sub.connect('tcp://%s:%d' % (p.CURRENT_FOCUS_IP, p.CURRENT_FOCUS_PORT))
+    topicfilter = ''
+    focus_sub.setsockopt_string(zmq.SUBSCRIBE, topicfilter)
+    current_ll_focus = None
+
+    # Publish tracking deltas
     track_socket = context.socket(zmq.PUB)
     track_socket.bind('tcp://*:%s' % p.TRACK_PORT)
+
+    # Publish ROI bounding box for focusing
+    roi_socket = context.socket(zmq.PUB)
+    roi_socket.bind('tcp://*:%s' % p.FOCUS_ROI_PORT)
 
     low_threshold = [50]
     high_threshold = [150]
     target_pos = np.array([1, 1])
     target_pos_slow = target_pos.copy()
     feature_delta = np.array([0, 0])
-    target_track_ok = False
+    target_track_init = False
 
     while keep_running:
+
+        try:
+            stage_string = stage_loc_sub.recv_string()
+            toks = stage_string.split(' ')
+            stage_x = float(toks[0])
+            stage_y = float(toks[1])
+            stage_z = float(toks[2])
+        except zmq.Again as e:
+            pass
+
+        try:
+            current_ll_focus = int(focus_sub.recv_string())
+            print('Received focus %d' % current_ll_focus)
+        except zmq.Again:
+            pass
+
         try:
             frame = recv_img(video_socket)
         except zmq.Again as e:
@@ -121,23 +165,31 @@ def main():
             else:
                 target_pos = np.array((cvui.mouse().x/resize_scale, cvui.mouse().y/resize_scale))
                 target_pos_slow = target_pos.copy()
-                target_track_ok = True
+                target_track_init = True
 
         bounding_rects = []
-        br_centers = np.zeros((len(contours), 2))
-        for indx,c in enumerate(contours):
+        br_centers = []
+        for indx, c in enumerate(contours):
             if cv2.contourArea(c) > p.BBOX_AREA_THRESH:
                 br = cv2.boundingRect(c)
                 x,y,w,h = cv2.boundingRect(c)
-                #cv2.circle(frame, (int(x + w/2), int(y+h/2)), 50, (0,255,0),1)
                 cv2.rectangle(frame, br, (0, 255, 0), 3)
                 bounding_rects.append(br)
-                br_centers[indx,:] = (x + w/2, y + h/2)
-                #cv2.drawContours(frame, contours, indx, (0, 255, 0), 1)
+                br_centers.append((x + w/2, y + h/2))
+        br_centers = np.array(br_centers)
 
-        if len(br_centers) > 0: # if we found any bounding boxes, determine their distances from target pt
+        if len(br_centers) > 0:  # if we found any bounding boxes, determine their distances from target pt
             br_dists = np.linalg.norm(br_centers - target_pos, axis=1)
-            target_pos_obs = br_centers[np.argmin(br_dists),:]
+            best_bbox_ix = np.argmin(br_dists)
+            target_pos_obs = br_centers[best_bbox_ix, :]
+            x, y, w, h = bounding_rects[best_bbox_ix]
+            bbox_ul = (x, y)
+            bbox_lr = (x + w, y + h)
+            roi_msg = m.SetFocusROI(bbox_ul, bbox_lr)
+        else:
+            roi_msg = m.SetFocusROI(None, None)  # Don't focus on any particular ROI
+
+        roi_socket.send_pyobj(roi_msg) # tell the camera which ROI to focus
 
         if len(br_centers) > 0 and np.linalg.norm(target_pos_obs - target_pos) < p.TARGET_JUMP_THRESH:
             # (we threw out anything that's *really* off, now we are going to low pass filter
@@ -145,19 +197,30 @@ def main():
             target_pos = target_pos * p.LP_IIR_DECAY + target_pos_obs * (1 - p.LP_IIR_DECAY)
             target_pos_slow = target_pos_slow * p.LP_IIR_DECAY_2 + target_pos_obs * (1 - p.LP_IIR_DECAY_2)
             cv2.circle(frame, (int(target_pos[0]), int(target_pos[1])), 75, (255,0,0),3)
-            cv2.circle(frame, (int(target_pos_slow[0] + feature_delta[0]), int(target_pos_slow[1] + feature_delta[1])), 5, (0,255,0), -1)
+            cv2.circle(frame, (int(target_pos_slow[0] + feature_delta[0]), int(target_pos_slow[1] + feature_delta[1])), 5, (0, 255, 0), -1)
+            target_track_ok = target_track_init  # only send commands to move the stage if we saw the target this frame
+        else:
+            target_track_ok = False  # don't command stage if no target track (prevents runaway stage behavior)
 
+        cv2.circle(frame, (int(p.IMG_DISP_WIDTH_SPOTTER / 2), int(p.IMG_DISP_HEIGHT_SPOTTER / 2)), 5, (0, 0, 255), -1)  # center of frame
+        cv2.circle(frame, (p.MACRO_LL_CENTER[0], p.MACRO_LL_CENTER[1]), 5, (255, 0, 255), -1)  # center of macro frame frame
 
-        # NOTE: Currently, this sends the delta between the tracked object's center and the center of the wide camera.
-        # In reality, we want the delta between the FoI (i.e. target_pos_slow + feature_delta) and the center of the
-        # zoomed camera, in camera 1's pixel space.
-        # send track position
-        if target_track_ok: # this means the track has been initialized
-            dx = target_pos[0] - p.IMG_DISP_WIDTH_SPOTTER / 2
-            dy = target_pos[1] - p.IMG_DISP_HEIGHT_SPOTTER / 2
-            #print('%f, %f' % (dx, dy))
-            track_socket.send_string('%f %f' % (dx, dy)) # 'wasteful', but easier debugging for now
-
+        if target_track_ok:  # this means the track has been initialized
+            if stage_x is not None and stage_y is not None and stage_z is not None and current_ll_focus is not None:
+                dx = (target_pos_slow[0] + feature_delta[0]) - (p.IMG_DISP_WIDTH_SPOTTER / 2 + p.MACRO_FOV_OFFSET[0])
+                dy = (target_pos_slow[1] + feature_delta[1]) - (p.IMG_DISP_HEIGHT_SPOTTER / 2 + p.MACRO_FOV_OFFSET[1])
+                print(current_ll_focus)
+                current_ll_focus = max(current_ll_focus, 47)
+                object_distance_ll = (current_ll_focus/2953.5)**(1.0/-0.729)  # (0-255) -> mm
+                #air_distance = (300 - stage_z) + p.STAGE_TANK_OFFSET
+                #water_distance = object_distance_ll - air_distance
+                #dz = air_distance - (p.FOCUS_DISTANCE_ZOOM - water_distance)
+                dz = object_distance_ll - p.FOCUS_DISTANCE_ZOOM
+                print('Object distance_ll: %f' % object_distance_ll)
+                #dz = 0  # dz is determined by LL focus -> object distance -> (object distance - macro focus) = delta
+                track_socket.send_string('%f %f %f' % (dx, dy, dz))  # 'wasteful', but easier debugging for now
+            else:
+                print('Cannot control stage until the current position is updated by the controller!')
 
         #frame_rescaled = cv2.resize(frame, (int(p.IMG_WIDTH * resize_scale), int(p.IMG_HEIGHT * resize_scale)))
         #frame_rescaled = cv2.resize(frame_canny, (int(p.IMG_WIDTH * resize_scale), int(p.IMG_HEIGHT * resize_scale)))

@@ -13,3 +13,10 @@ class AutofocusMessage:
 class SetFocusMessage:
     def __init__(self, focus):
         self.focus = focus
+
+
+class SetFocusROI:
+    def __init__(self, ul, lr):
+        # upper left corner tuple, lower right corner tuple
+        self.ul = ul
+        self.lr = lr

@@ -14,7 +14,7 @@ z_stage.initialize()
 sharpness_list = []
 
 for ix in range(p.N_AUTOFOCUS_JOG):
-    frame = cam.get_frame()
+    frame = cam.read()
     cv2.imshow(p.VIDEO_WINDOW_NAME, frame)
     cv2.waitKey(1)
     frame = cv2.GaussianBlur(frame, (3, 3), 0)
@@ -31,6 +31,6 @@ print('jogging back: %f' % jog_back_amount)
 time.sleep(3)
 z_stage.jog(jog_back_amount, max_wait=4000)
 time.sleep(3)
-frame = cam.get_frame()
+frame = cam.read()
 cv2.imshow(p.VIDEO_WINDOW_NAME, frame)
 cv2.waitKey(0)
