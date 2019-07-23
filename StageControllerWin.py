@@ -73,7 +73,7 @@ def main():
         except:
             pass
             
-        time.sleep(.1)
+        #time.sleep(.1)
         
     x_stage.device.StopImmediate()
     y_stage.device.StopImmediate()

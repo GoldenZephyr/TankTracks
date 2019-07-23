@@ -121,7 +121,7 @@ def main():
             pass
 
         try:
-            current_ll_focus = int(focus_sub.recv_string())
+            current_ll_focus = float(focus_sub.recv_string())
             print('Received focus %d' % current_ll_focus)
         except zmq.Again:
             pass

@@ -30,21 +30,26 @@ def autofocus_LL(cam, rotation, socket, af_min, af_max, af_step, roi_ul, roi_lr)
     af_min = max(af_min, 0)
     af_max = min(af_max, 255)
     sharpness_list = []
+    cam.set(cv2.CAP_PROP_FOCUS, af_min)
+    time.sleep(.1)
     for focus_ix in range(af_min, af_max, af_step):
         focus = focus_ix
         cam.set(cv2.CAP_PROP_FOCUS, focus)
         ret, frame = cam.read()
+        # colors points at corners of bounding box for debugging
         #if roi_ul is not None:
         #    frame_send = frame.copy()
-        #    frame_send[roi_ul[1], roi_ul[0],:] = [0, 0, 255]
-        #    frame_send[roi_lr[1], roi_lr[0],:] = [0, 0, 255]
+        #    frame_send[roi_ul[1], roi_ul[0], :] = [0, 0, 255]
+        #    frame_send[roi_lr[1], roi_lr[0], :] = [0, 0, 255]
         #else:
         #    frame_send = frame
         send_img(socket, np.ascontiguousarray(np.rot90(frame, k=rotation)))
         if not (roi_ul is None or roi_lr is None):
             frame = frame[roi_ul[1]:roi_lr[1], roi_ul[0]:roi_lr[0]]
-        frame_blur = cv2.GaussianBlur(frame, (5, 5), 0)
-        sharpness = np.mean(cv2.convertScaleAbs(cv2.Laplacian(frame_blur, 3)))
+        frame_blur = cv2.GaussianBlur(frame, (3, 3), 0)
+        frame_sharpness = np.abs(cv2.Laplacian(frame_blur, ddepth=3, ksize=5))
+        frame_sharpness_flat = frame_sharpness.flatten()
+        sharpness = np.mean(np.sort(frame_sharpness_flat)[-int(frame.size*.2):])
         sharpness_list.append(sharpness)
 
     print('Best sharpness: %f' % max(sharpness_list))
@@ -153,8 +158,8 @@ def main():
 
         if camera_type == 'econsystems' and p.AUTOFOCUS_ENABLE:
             # do autofocus stuff
-            print('Sending focus: %d' % new_focus)
-            socket_cfocus_pub.send_string('%d' % new_focus)
+            print('Sending focus: %.3f' % new_focus)
+            socket_cfocus_pub.send_string('%.3f' % new_focus)
 
             try:
                 roi_msg = focus_roi_sub.recv_pyobj()
@@ -180,7 +185,7 @@ def main():
                     print('Received malformed autofocus message of type %s' % type(af_msg))
             except zmq.Again:
                 # no need to autofocus
-                (new_focus_obs, best_sharpness) = autofocus_LL(cam, rotation, socket_img, int(new_focus - 15), int(new_focus + 15), int(1), focus_roi_ul, focus_roi_lr)
+                (new_focus_obs, best_sharpness) = autofocus_LL(cam, rotation, socket_img, int(new_focus - 5), int(new_focus + 5), int(1), focus_roi_ul, focus_roi_lr)
                 new_focus = p.AUTOFOCUS_IIR_DECAY * new_focus + (1-p.AUTOFOCUS_IIR_DECAY) * new_focus_obs
                 if best_sharpness < p.EXPECTED_SHARPNESS_THRESHOLD * expected_sharpness:
                     (new_focus, expected_sharpness) = autofocus_LL(cam, rotation, socket_img, 0, 255, 5, focus_roi_ul, focus_roi_lr)
