@@ -49,15 +49,15 @@ def main():
         img_height = p.IMG_HEIGHT_ZOOM
         color_depth = p.COLOR_CHAN_ZOOM
         fps = p.FPS_ZOOM
-        video_port = p.VIDEO_PORT_ZOOM
-        video_ip = p.VIDEO_IP_ZOOM
+        video_port = p.VIDEO_ZOOM_PORT
+        video_ip = p.VIDEO_ZOOM_IP
     elif video_source == 'spotter':
         img_width = p.IMG_WIDTH_SPOTTER
         img_height = p.IMG_HEIGHT_SPOTTER
         color_depth = p.COLOR_CHAN_SPOTTER
         fps = p.FPS_SPOTTER
-        video_port = p.VIDEO_PORT_SPOTTER
-        video_ip = p.VIDEO_IP_SPOTTER
+        video_port = p.VIDEO_SPOTTER_PORT
+        video_ip = p.VIDEO_SPOTTER_IP
     else:
         print('video_source must be either "zoom" or "spotter". ')
 
