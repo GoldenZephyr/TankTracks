@@ -34,8 +34,8 @@ LTS300_Z = '45968230'
 
 STAGE_USE_Z = True
 
-STAGE_TANK_OFFSET = 110  # mm
-TANK_DEPTH_MM = 120 # mm
+STAGE_TANK_OFFSET = 95  # mm
+TANK_DEPTH_MM = 120  # mm
 
 # Spotter Camera Params
 #######################
@@ -71,7 +71,8 @@ FPS_ZOOM = 30
 ROTATE_ZOOM = 2
 
 # distance from front of macro to focus plane is 140.38 mm
-FOCUS_DISTANCE_ZOOM = 140.48 + 20  # mm, NOTE: This is the distance from the LL camera face, *not* from the macro lens
+FOCUS_DISTANCE_ZOOM = 140.48 + 40  # mm, NOTE: This is the distance from the LL camera face, *not* from the macro lens
+
 
 # Autofocus Params
 ##################
@@ -97,13 +98,13 @@ TARGET_JUMP_THRESH = 300  # if the bounding box jumps by this much, assume it's 
 LP_IIR_DECAY = .5  # LP_IIR_DECAY * est_current + (1 - LP_IIR_DECAY) * obs_current
 LP_IIR_DECAY_2 = .7
 
-X_MOVE_SCALE = 5  # Needs to be calibrated!!!!
-Y_MOVE_SCALE = 5
+X_MOVE_SCALE = 20  # Needs to be calibrated!!!!
+Y_MOVE_SCALE = 20
 Z_MOVE_SCALE = 1
 
 STAGE_DEADBAND = .3  # mm space (currently not calibrated though)
 
 ARROW_MOVE_RATE = 1
 
-MACRO_LL_CENTER = (182, 284)  # center of macro FoV in LL frame (pixels)
+MACRO_LL_CENTER = (210, 250)  # center of macro FoV in LL frame (pixels)
 MACRO_FOV_OFFSET = (MACRO_LL_CENTER[0] - IMG_WIDTH_SPOTTER / 2, MACRO_LL_CENTER[1] - IMG_HEIGHT_SPOTTER / 2)  # offset (in LL pixel space) of the Macro FoV relative to spotter FoV

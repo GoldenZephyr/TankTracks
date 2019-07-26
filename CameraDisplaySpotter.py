@@ -63,7 +63,7 @@ def determine_roi(frame, contours, target_pos):
 
 
 def process_contours(frame, canny_thresh_low, canny_thresh_high):
-    frame_canny = apply_canny(cv2.GaussianBlur(frame, (0, 0), 2), canny_thresh_low, canny_thresh_high, 3)
+    frame_canny = apply_canny(cv2.GaussianBlur(frame, (0, 0), 5), canny_thresh_low, canny_thresh_high, 3)
     kernel = np.ones((5, 5), np.uint8)
     frame_canny = cv2.dilate(frame_canny, kernel, iterations=1)
     contours, _ = cv2.findContours(frame_canny, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
@@ -232,6 +232,7 @@ def main():
     stage_x = None
     stage_y = None
     stage_z = None
+    z_moving = True
     current_ll_focus = None
     low_threshold = [50]
     high_threshold = [150]
@@ -245,7 +246,12 @@ def main():
 
         try:
             stage_pos = stage_sub.recv_string()
-            (stage_x, stage_y, stage_z) = [float(x) for x in stage_pos.split(' ')]
+            (stage_x, stage_y, stage_z_new) = [float(x) for x in stage_pos.split(' ')]
+            if stage_z_new == stage_z:
+                z_moving = False
+            else:
+                z_moving = True
+            stage_z = stage_z_new
         except zmq.Again:
             pass
 
@@ -266,6 +272,7 @@ def main():
             target_track_init = True
 
         feature_delta += get_feature_2delta()
+        print(feature_delta)
 
         (br_centers, target_pos_obs, roi_msg) = determine_roi(frame, contours, target_pos)
         roi_socket.send_pyobj(roi_msg)  # tell the LL camera which ROI to focus
@@ -323,14 +330,18 @@ def main():
                         stage_z_dir = 1
 
                 elif MODE == 'FINE':
-                    try:
-                        macro_sharpness_dir = float(macro_sharpness_sub.recv_string())
-                        if macro_sharpness_dir < 0:
-                            stage_z_dir = -1 * stage_z_dir
-                        dz = 10 * stage_z_dir
-                    except zmq.Again:
-                        # no sharpness value, which is unexpected
+                    if z_moving:
                         dz = 0
+                        print('z_moving mode, waiting for stage position set')
+                    else:
+                        try:
+                            macro_sharpness_dir = float(macro_sharpness_sub.recv_string())
+                            if macro_sharpness_dir < 0:
+                                stage_z_dir = -1 * stage_z_dir
+                            dz = 10 * stage_z_dir
+                        except zmq.Again:
+                            # no sharpness value, which is unexpected
+                            dz = 0
                 else:
                     print('Unknown MODE %s' % MODE)
                     dz = 0

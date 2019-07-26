@@ -64,7 +64,8 @@ def main():
     cam = PGCamera(camera_id)
     cam.start_capture()
 
-    n_hist = 6
+    sharpness_est = 0
+    n_hist = 15
     sharpness_delta_history = np.zeros((1, n_hist))
     hist_ix = 0
     while keep_running:
@@ -77,7 +78,7 @@ def main():
         frame = np.ascontiguousarray(np.rot90(frame, k=rotation))
         send_img(socket_img, frame)
         frame_blur = cv2.GaussianBlur(frame, (3, 3), 0)
-        frame_sharpness = np.abs(cv2.Laplacian(frame_blur, ddepth=3, ksize=1))
+        frame_sharpness = np.abs(cv2.Laplacian(frame_blur, ddepth=3, ksize=3))
         #frame_sharpness_flat = frame_sharpness.flatten()
         #sharpness = np.mean(np.sort(frame_sharpness_flat)[-int(frame.size*.2):])
         sharpness = np.mean(frame_sharpness)
@@ -86,6 +87,8 @@ def main():
             sharpness_last = sharpness
         sharpness_delta_history[0, hist_ix % n_hist] = sharpness - sharpness_last
         avg_sharpness_delta = np.mean(sharpness_delta_history)
+        #print(avg_sharpness_delta)
+        print(sharpness)
         socket_sharpness.send_string(str(avg_sharpness_delta))
         sharpness_last = sharpness
         hist_ix += 1
