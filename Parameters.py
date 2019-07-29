@@ -34,7 +34,7 @@ LTS300_Z = '45968230'
 
 STAGE_USE_Z = True
 
-STAGE_TANK_OFFSET = 95  # mm
+STAGE_TANK_OFFSET = 55  # mm
 TANK_DEPTH_MM = 120  # mm
 
 # Spotter Camera Params
@@ -106,5 +106,7 @@ STAGE_DEADBAND = .3  # mm space (currently not calibrated though)
 
 ARROW_MOVE_RATE = 1
 
-MACRO_LL_CENTER = (210, 250)  # center of macro FoV in LL frame (pixels)
+MACRO_LL_CENTER = (190, 270)  # center of macro FoV in LL frame (pixels)
 MACRO_FOV_OFFSET = (MACRO_LL_CENTER[0] - IMG_WIDTH_SPOTTER / 2, MACRO_LL_CENTER[1] - IMG_HEIGHT_SPOTTER / 2)  # offset (in LL pixel space) of the Macro FoV relative to spotter FoV
+
+BYPASS_LL_ESTIMATE = False

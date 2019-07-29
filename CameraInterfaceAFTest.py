@@ -86,7 +86,7 @@ def main():
         if fps is None:
             fps = p.FPS_SPOTTER
         if video_port is None:
-            video_port = p.VIDEO_PORT_SPOTTER
+            video_port = p.VIDEO_SPOTTER_PORT
         if camera_id is None:
             camera_id = p.CAMERA_ID_SPOTTER  # note this may depend on camera plugged in ordering?
         if rotation is None:
@@ -95,7 +95,7 @@ def main():
         if fps is None:
             fps = p.FPS_ZOOM
         if video_port is None:
-            video_port = p.VIDEO_PORT_ZOOM
+            video_port = p.VIDEO_ZOOM_PORT
         if camera_id is None:
             camera_id = p.CAMERA_ID_ZOOM
         if rotation is None:

@@ -39,7 +39,7 @@ def autofocus_LL(cam, rotation, socket, socket_state, af_min, af_max, af_step, r
         if not (roi_ul is None or roi_lr is None):
             frame = frame[roi_ul[1]:roi_lr[1], roi_ul[0]:roi_lr[0]]
         # calculate sharpness
-        frame_blur = cv2.GaussianBlur(frame, (11, 11), 0)
+        frame_blur = cv2.GaussianBlur(frame, (9, 9), 0)
         frame_sharpness = np.abs(cv2.Laplacian(frame_blur, ddepth=3, ksize=5))
         frame_sharpness_flat = frame_sharpness.flatten()
         sharpness = np.mean(np.sort(frame_sharpness_flat)[-int(frame.size*.2):])

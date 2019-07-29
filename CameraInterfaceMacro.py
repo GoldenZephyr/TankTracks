@@ -65,8 +65,9 @@ def main():
     cam.start_capture()
 
     sharpness_est = 0
-    n_hist = 15
+    n_hist = 3
     sharpness_delta_history = np.zeros((1, n_hist))
+    sharpness_history = np.zeros((1, n_hist))
     hist_ix = 0
     while keep_running:
 
@@ -86,10 +87,13 @@ def main():
         if hist_ix == 0:
             sharpness_last = sharpness
         sharpness_delta_history[0, hist_ix % n_hist] = sharpness - sharpness_last
+        sharpness_history[0, hist_ix % n_hist] = sharpness
         avg_sharpness_delta = np.mean(sharpness_delta_history)
+        avg_sharpness = np.mean(sharpness_history)
         #print(avg_sharpness_delta)
-        print(sharpness)
-        socket_sharpness.send_string(str(avg_sharpness_delta))
+        print(avg_sharpness)
+        #socket_sharpness.send_string(str(avg_sharpness_delta))
+        socket_sharpness.send_string(str(avg_sharpness))
         sharpness_last = sharpness
         hist_ix += 1
 

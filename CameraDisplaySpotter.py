@@ -1,6 +1,7 @@
 #!/usr/bin/python3
 import time
 import signal
+import sys
 
 import zmq
 import cv2
@@ -13,6 +14,7 @@ import Parameters as p
 import Messages as m
 
 keep_running = True
+BYPASS_LL_ESTIMATE = False
 
 
 def calculate_movement_offsets(frame, centers, target_pos, target_pos_obs, target_pos_slow, feature_delta):
@@ -69,19 +71,35 @@ def process_contours(frame, canny_thresh_low, canny_thresh_high):
     contours, _ = cv2.findContours(frame_canny, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     return contours
 
+def manual_focus_update():
+    delta = 0
+    if keyboard.is_pressed('d'):
+        print('zoom out')
+        delta = -0.1
+    if keyboard.is_pressed('f'):
+        print('zoom in')
+        delta = -0.1
+
+    if keyboard.is_pressed('alt'):
+        print('Super Zoom!')
+        modifier = 100
+    else:
+        modifier = 1
+    return delta * modifier
+
 
 def get_feature_2delta():
     feature_2delta = np.array([0, 0])
-    if keyboard.is_pressed('up'):
+    if keyboard.is_pressed('up') or keyboard.is_pressed('k'):
         print('up')
         feature_2delta[1] -= p.ARROW_MOVE_RATE
-    if keyboard.is_pressed('down'):
+    if keyboard.is_pressed('down') or keyboard.is_pressed('j'):
         print('down')
         feature_2delta[1] += p.ARROW_MOVE_RATE
-    if keyboard.is_pressed('left'):
+    if keyboard.is_pressed('left') or keyboard.is_pressed('h'):
         print('left')
         feature_2delta[0] -= p.ARROW_MOVE_RATE
-    if keyboard.is_pressed('right'):
+    if keyboard.is_pressed('right') or keyboard.is_pressed('l'):
         print('right')
         feature_2delta[0] += p.ARROW_MOVE_RATE
 
@@ -153,15 +171,33 @@ def setup_zmq(context):
 
 
 def draw_settings(ctrl_frame, settings, low_threshold, high_threshold, mode):
-    if mode == 'COARSE':
+    if mode == 'FULL_MANUAL':
+        full_manual = [True]
+        manual_focus = [False]
+        coarse = [False]
+        fine = [False]
+        paused = [False]
+    elif mode == 'COARSE':
+        full_manual = [False]
+        manual_focus = [False]
         coarse = [True]
         fine = [False]
         paused = [False]
     elif mode == 'FINE':
+        full_manual = [False]
+        manual_focus = [False]
         coarse = [False]
         fine = [True]
         paused = [False]
+    elif mode == 'MANUAL_FOCUS':
+        full_manual = [False]
+        manual_focus = [True]
+        coarse = [False]
+        fine = [False]
+        paused = [False]
     else:
+        full_manual = [False]
+        manual_focus = [False]
         coarse = [False]
         fine = [False]
         paused = [True]
@@ -171,23 +207,61 @@ def draw_settings(ctrl_frame, settings, low_threshold, high_threshold, mode):
         cvui.trackbar(settings.width() - 20, low_threshold, 5, 150)
         cvui.trackbar(settings.width() - 20, high_threshold, 80, 300)
         cvui.space(20)  # add 20px of empty space
-        cvui.checkbox('Coarse Mode', coarse)
-        cvui.checkbox('Fine Mode', fine)
+        cvui.checkbox('Full Manual', full_manual)
+        cvui.checkbox('Manual Focus', manual_focus)
+        cvui.checkbox('Coarse AutoFocus', coarse)
+        cvui.checkbox('Fine AutoFocus', fine)
         cvui.checkbox('Paused', paused)
+        if cvui.button('Force Macro Focus Sweep'):
+            macro_resweep = True
+        else:
+            macro_resweep = False
     settings.end()
 
+    # PAUSED -> {COARSE | FULL_MANUAL | MANUAL_FOCUS}
     if mode == 'PAUSED':
         if coarse[0]:
             mode = 'COARSE'
+        elif full_manual[0]:
+            mode = 'FULL_MANUAL'
+        elif manual_focus[0]:
+            mode = 'MANUAL_FOCUS'
+    # COARSE -> {PAUSED | FULL_MANUAL | MANUAL_FOCUS}
     elif mode == 'COARSE':
         if paused[0]:
             mode = 'PAUSED'
+        elif full_manual[0]:
+            mode = 'FULL_MANUAL'
+        elif manual_focus[0]:
+            mode = 'MANUAL_FOCUS'
+    # FINE -> {PAUSED | COARSE | FULL_MANUAL | MANUAL_FOCUS}
     elif mode == 'FINE':
         if paused[0]:
             mode = 'PAUSED'
         elif coarse[0]:
             mode = 'COARSE'
-    return mode
+        elif full_manual[0]:
+            mode = 'FULL_MANUAL'
+        elif manual_focus[0]:
+            mode = 'MANUAL_FOCUS'
+    # MANUAL_FOCUS -> {PAUSED | COARSE | FULL_MANUAL}
+    elif mode == 'MANUAL_FOCUS':
+        if paused[0]:
+            mode = 'PAUSED'
+        elif coarse[0]:
+            mode = 'COARSE'
+        elif full_manual[0]:
+            mode = 'FULL_MANUAL'
+    # MANUAL_FOCUS -> {FULL_MANUAL | MANUAL_FOCUS | PAUSED}
+    elif mode == 'FULL_MANUAL':
+        if paused[0]:
+            mode = 'PAUSED'
+        elif coarse[0]:
+            mode = 'COARSE'
+        elif manual_focus[0]:
+            mode = 'MANUAL_FOCUS'
+
+    return mode, macro_resweep
 
 
 def apply_canny(frame, high, low, kernel):
@@ -211,6 +285,8 @@ def sigint_handler(signo, stack_frame):
 def main():
 
     global keep_running
+    global BYPASS_LL_ESTIMATE
+
     save_video = False
     if save_video:
         sz = (p.IMG_WIDTH_SPOTTER, p.IMG_HEIGHT_SPOTTER)
@@ -234,6 +310,7 @@ def main():
     stage_z = None
     z_moving = True
     current_ll_focus = None
+    object_distance_ll = 0
     low_threshold = [50]
     high_threshold = [150]
     target_pos = np.array([1, 1])
@@ -241,9 +318,12 @@ def main():
     feature_delta = np.array([0, 0])
     target_track_init = False
     MODE = 'PAUSED'
+    fine_submode = 'UNINITIALIZED'
+    macro_sharpness = 0
 
     while keep_running:
 
+        # Receive stage position updates
         try:
             stage_pos = stage_sub.recv_string()
             (stage_x, stage_y, stage_z_new) = [float(x) for x in stage_pos.split(' ')]
@@ -255,6 +335,16 @@ def main():
         except zmq.Again:
             pass
 
+        # Receive macro sharpness
+        try:
+            macro_sharpness_last = macro_sharpness
+            macro_sharpness = float(macro_sharpness_sub.recv_string())
+        except zmq.Again:
+            # no sharpness value, which is unexpected
+            print('No Macro Image Sharpness!')
+
+
+        # receive next frame
         try:
             frame = recv_img(video_socket)
         except zmq.Again:
@@ -265,90 +355,164 @@ def main():
         contours = process_contours(frame, low_threshold[0], high_threshold[0])
 
         cvui.context(p.VIDEO_WINDOW_NAME)
-
         if cvui.mouse(cvui.IS_DOWN):
             (target_pos, feature_delta) = reset_target_selection()
             target_pos_slow = target_pos.copy()
             target_track_init = True
 
         feature_delta += get_feature_2delta()
-        print(feature_delta)
 
         (br_centers, target_pos_obs, roi_msg) = determine_roi(frame, contours, target_pos)
         roi_socket.send_pyobj(roi_msg)  # tell the LL camera which ROI to focus
 
+        # how much do we need to move in pixel-space?
+        # Note dx and dy are 0if there are no target tracks
         (dx, dy, target_track_ok) = calculate_movement_offsets(frame, br_centers, target_pos, target_pos_obs, target_pos_slow, feature_delta)
 
         # draw dots on frame centers
         cv2.circle(frame, (int(p.IMG_DISP_WIDTH_SPOTTER / 2), int(p.IMG_DISP_HEIGHT_SPOTTER / 2)), 5, (0, 0, 255), -1)  # center of frame
         cv2.circle(frame, (p.MACRO_LL_CENTER[0], p.MACRO_LL_CENTER[1]), 5, (255, 0, 255), -1)  # center of macro frame frame
 
+
+        # Now we have a giant state machine. We need to structure the code this way, because we want 2D tracking and
+        # user interaction to update even when we are waiting on some slower action to occur related to object depth
+        # and focusing. The state machine provides a mechanism to handle these slower processes while not impeding the
+        # rest of the tracking process.
+        #
+        # There are 3 major states: PAUSED, COARSE, and FINE
+        # In the PAUSED state, none of the stages will move, and no LL focusing happens
+        # In the COARSE state, The liquid lens sweeps focus through the tank to determine a coarse depth estimate via depth-from-focus
+        # In the FINE state, the stage makes adjustments based on the macro lens to keep the object in focus
+        # The FINE state has a second state machine within it, which is described within the FINE branch below.
         if MODE == 'PAUSED':
             track_socket.send_string('0 0 0')
-        else:
-            if target_track_ok and target_track_init:  # this means the track has been initialized
-                if MODE == 'COARSE':
-                    if stage_z is None:
-                        print('Cannot continue until stage node is up')
-                        dz = 0
-                    else:
-                        dist_to_tank = (300 - stage_z) + p.STAGE_TANK_OFFSET
-                        ll_max = 2953.5*dist_to_tank**-.729
-                        ll_min = 2953.5*(dist_to_tank + p.TANK_DEPTH_MM)**-0.729
-                        print('llmin, llmax: (%f, %f)' % (ll_min, ll_max))
-                        af_pub.send_pyobj(m.AutofocusMessage(ll_min, ll_max, 1))
-                        state = ''
-                        for ix in range(5):
-                            try:
-                                state = focus_state_sub.recv_string()
-                            except zmq.Again:
-                                continue
-                            if state == 'FOCUSING':
-                                break
-                            if ix == 4:
-                                print('Camera not entering focus mode!')
-                                keep_running = False
-                        while state == 'FOCUSING':
-                            frame = recv_img(video_socket)
-                            cv2.imshow(p.VIDEO_WINDOW_NAME, frame)
-                            cv2.waitKey(1)
-                            state = focus_state_sub.recv_string()
-
-                        try:
-                            current_ll_focus = float(focus_sub.recv_string())
-                            print('Received focus %d' % current_ll_focus)
-                        except zmq.Again:
-                            current_ll_focus = None
-
-                        if current_ll_focus is not None:
-                            object_distance_ll = (current_ll_focus/2953.5)**(1.0/-0.729)  # (0-255) -> mm
-                            dz = object_distance_ll - p.FOCUS_DISTANCE_ZOOM
-                            print('Object distance_ll: %f' % object_distance_ll)
-                        else:
-                            dz = 0
-                        MODE = 'FINE'
-                        stage_z_dir = 1
-
-                elif MODE == 'FINE':
-                    if z_moving:
-                        dz = 0
-                        print('z_moving mode, waiting for stage position set')
-                    else:
-                        try:
-                            macro_sharpness_dir = float(macro_sharpness_sub.recv_string())
-                            if macro_sharpness_dir < 0:
-                                stage_z_dir = -1 * stage_z_dir
-                            dz = 10 * stage_z_dir
-                        except zmq.Again:
-                            # no sharpness value, which is unexpected
-                            dz = 0
-                else:
-                    print('Unknown MODE %s' % MODE)
-                    dz = 0
-
-                track_socket.send_string('%f %f %f' % (dx, dy, dz))  # 'wasteful', but easier debugging for now
+            dx = 0
+            dy = 0
+            dz = 0
+        elif MODE == 'MANUAL_FOCUS':
+            dz = manual_focus_update()
+        elif MODE == 'FULL_MANUAL':
+            (dx, dy) = get_feature_2delta()
+            dz = manual_focus_update()
+        elif MODE == 'COARSE':
+            print('MODE is COARSE')
+            if stage_z is None:
+                print('Cannot continue until stage node is up')
+                dz = 0
             else:
-                print('No target track')
+                dist_to_tank = (300 - stage_z) + p.STAGE_TANK_OFFSET
+                ll_max = 2953.5*dist_to_tank**-0.729
+                ll_min = 2953.5*(dist_to_tank + p.TANK_DEPTH_MM)**-0.729
+                print('llmin, llmax: (%f, %f)' % (ll_min, ll_max))
+                af_pub.send_pyobj(m.AutofocusMessage(ll_min, ll_max, 1))
+                state = '' # The liquid lens will broadcast whether it is FOCUSING or FIXED
+                for ix in range(5):
+                    try:
+                        state = focus_state_sub.recv_string()
+                    except zmq.Again:
+                        continue
+                    if state == 'FOCUSING':
+                        break
+                    if ix == 4:
+                        print('Camera not entering focus mode!')
+                        keep_running = False
+                while state == 'FOCUSING':
+                    frame = recv_img(video_socket)
+                    cv2.imshow(p.VIDEO_WINDOW_NAME, frame)
+                    cv2.waitKey(1)
+                    state = focus_state_sub.recv_string()
+
+                try:
+                    current_ll_focus = float(focus_sub.recv_string())
+                    print('Received focus %d' % current_ll_focus)
+                except zmq.Again:
+                    current_ll_focus = None
+
+                if current_ll_focus is not None:
+                    object_distance_ll = (current_ll_focus/2953.5)**(1.0/-0.729)  # (0-255) -> mm
+                    #dz = object_distance_ll - p.FOCUS_DISTANCE_ZOOM
+                    dz = 0
+                    print('Object distance_ll: %f' % object_distance_ll)
+                else:
+                    dz = 0
+                MODE = 'FINE'
+                fine_submode = 'UNINITIALIZED'
+                stage_z_dir = 1
+
+        elif MODE == 'FINE':
+
+            if target_track_ok and target_track_init:  # this means the track has been initialized
+                # UNINITIALIZED - We tell the stage to move to the pre-sweep position
+                if fine_submode == 'UNINITIALIZED':
+                    print('MODE is FINE -> UNINITIALIZED')
+                    if BYPASS_LL_ESTIMATE:
+                        dist_to_tank = (300 - stage_z) + p.STAGE_TANK_OFFSET
+                        dz = dist_to_tank - p.FOCUS_DISTANCE_ZOOM  # This should place macro focus at near edge of tank
+                    else:
+                        dz = object_distance_ll - p.FOCUS_DISTANCE_ZOOM - 15
+                    sweep_lowerbound_abs = stage_z + dz
+                    fine_submode = 'MOVING_LOWER_BOUND'
+
+                # MOVING_LOWER_BOUND - We wait until the stage has reached pre-sweep position
+                elif fine_submode == 'MOVING_LOWER_BOUND':
+                    print('MODE is FINE -> MOVING_LOWER_BOUND')
+                    dz = 0
+                    if abs(stage_z - sweep_lowerbound_abs) < 0.1 and not z_moving:
+                        if BYPASS_LL_ESTIMATE:
+                            dz = p.TANK_DEPTH_MM
+                        else:
+                            dz = 30.0
+                        stage_sweep_end = stage_z + dz
+                        best_sharpness = 0
+                        best_sharpness_location = 0
+                        fine_submode = 'SWEEPING_ROI'
+
+                # SWEEPING_ROI - We wait while the stage sweeps focus through the ROI, tracking best sharpness
+                elif fine_submode == 'SWEEPING_ROI':
+                    print('MODE is FINE -> SWEEPING_ROI')
+                    # don't order any z motion, but check if z stopped
+                    if abs(stage_z - sweep_lowerbound_abs) > 1 and z_moving:
+                        dz = 0
+                    print('%.3f / %.3f' % (macro_sharpness, best_sharpness))
+                    if macro_sharpness > best_sharpness:
+                        best_sharpness = macro_sharpness
+                        best_sharpness_location = stage_z
+                    if abs(stage_z - stage_sweep_end) < 0.1 and not z_moving:
+                        dz = best_sharpness_location - stage_z
+                        print(dz)
+                        fine_submode = 'MOVING_TO_PEAK'
+
+                # MOVING_TO_PEAK - We wait until the stage is close to the best sharpness location
+                elif fine_submode == 'MOVING_TO_PEAK':
+                    print('MODE is FINE -> MOVING_TO_PEAK')
+                    if abs(stage_z - best_sharpness_location) < 0.1:
+                        fine_submode = 'INITIALIZED'
+                        if BYPASS_LL_ESTIMATE:
+                            BYPASS_LL_ESTIMATE = False or p.BYPASS_LL_ESTIMATE
+
+                # INITIALIZED - Our stage sweep gave us an estimate of where the best focus for the object is. Once
+                # we get to that point, hopefully we can keep it in focus by moving the stage to maintain focus
+                # based on the sharpness gradient.
+                elif fine_submode == 'INITIALIZED':
+                    print('MODE is FINE -> INITIALIZED')
+                    if macro_sharpness < macro_sharpness_last:
+                        stage_z_dir = -1 * stage_z_dir
+                    dz = 3 * stage_z_dir
+
+                    # We have an invalid mode, which should never happen and it means there's an issue with the code
+                else:
+                    print('fine_submode in illegal state %s!' % fine_submode)
+                    sys.exit(1)
+            else:
+                print('No target track!')
+
+
+        # In an invalid mode, so we should quit and fix the problem with the code
+        else:
+            print('Unknown MODE %s' % MODE)
+            sys.exit(1)
+
+        track_socket.send_string('%f %f %f' % (dx, dy, dz))  # 'wasteful', but easier debugging for now
 
         frame = cv2.resize(frame, (p.IMG_DISP_WIDTH_SPOTTER, p.IMG_DISP_HEIGHT_SPOTTER))
 
@@ -358,7 +522,11 @@ def main():
             vout.write(frame)
 
         cvui.context(p.CTRL_WINDOW_NAME)
-        MODE = draw_settings(ctrl_frame, settings, low_threshold, high_threshold, MODE)
+        MODE, macro_resweep = draw_settings(ctrl_frame, settings, low_threshold, high_threshold, MODE)
+        if macro_resweep:
+            BYPASS_LL_ESTIMATE = True
+            MODE = 'FINE'
+            fine_submode = 'UNINITIALIZED'
         cvui.update(p.CTRL_WINDOW_NAME)
         cv2.imshow(p.CTRL_WINDOW_NAME, ctrl_frame)
         cv2.waitKey(1)

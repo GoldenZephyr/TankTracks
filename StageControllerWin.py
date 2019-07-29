@@ -59,7 +59,7 @@ def main():
         # Currently it's just a random guess
         if abs(dx/p.X_MOVE_SCALE) > p.STAGE_DEADBAND:
             try:
-                x_stage.jog(-dx/p.X_MOVE_SCALE, 0, 200)  # <- tune this (MOVE_SCALE)
+                x_stage.jog(-dx/p.X_MOVE_SCALE, 0, 300)  # <- tune this (MOVE_SCALE)
             except:
                 pass
         if abs(dy/p.Y_MOVE_SCALE) > p.STAGE_DEADBAND:
@@ -69,7 +69,8 @@ def main():
                 pass
 
         try:
-            z_stage.jog(dz/p.Z_MOVE_SCALE, 0, 300)
+            z_stage.jog(dz/p.Z_MOVE_SCALE, 20, 295)
+            print('z_stage jog  set to %f' % (dz / p.Z_MOVE_SCALE))
         except:
             pass
             
