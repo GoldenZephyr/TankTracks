@@ -1,4 +1,4 @@
-#!/usr/bin/python3
+    #!/usr/bin/python3
 import time
 import signal
 import sys
@@ -17,9 +17,9 @@ keep_running = True
 BYPASS_LL_ESTIMATE = False
 
 
-def calculate_movement_offsets(frame, centers, target_pos, target_pos_obs, target_pos_slow, feature_delta):
+def calculate_movement_offsets(frame, target_pos, target_pos_obs, target_pos_slow, feature_delta):
 
-    if len(centers) > 0 and np.linalg.norm(target_pos_obs - target_pos) < p.TARGET_JUMP_THRESH:
+    if np.linalg.norm(target_pos_obs - target_pos) < p.TARGET_JUMP_THRESH:
         # (we threw out anything that's *really* off, now we are going to low pass filter
         # we'll just do IIR because the jump threshold will prevent crazy outliers
         target_pos = target_pos * p.LP_IIR_DECAY + target_pos_obs * (1 - p.LP_IIR_DECAY)
@@ -65,11 +65,12 @@ def determine_roi(frame, contours, target_pos):
 
 
 def process_contours(frame, canny_thresh_low, canny_thresh_high):
-    frame_canny = apply_canny(cv2.GaussianBlur(frame, (0, 0), 5), canny_thresh_low, canny_thresh_high, 3)
+    frame_canny = apply_canny(cv2.GaussianBlur(frame, (0, 0), 3), canny_thresh_low, canny_thresh_high, 3)
     kernel = np.ones((5, 5), np.uint8)
     frame_canny = cv2.dilate(frame_canny, kernel, iterations=1)
     contours, _ = cv2.findContours(frame_canny, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     return contours
+
 
 def manual_focus_update():
     delta = 0
@@ -78,7 +79,7 @@ def manual_focus_update():
         delta = -0.1
     if keyboard.is_pressed('f'):
         print('zoom in')
-        delta = -0.1
+        delta = 0.1
 
     if keyboard.is_pressed('alt'):
         print('Super Zoom!')
@@ -170,7 +171,7 @@ def setup_zmq(context):
     return video_socket, focus_sub, stage_sub, focus_state_sub, macro_sharpness_sub, track_socket, roi_socket, af_pub
 
 
-def draw_settings(ctrl_frame, settings, low_threshold, high_threshold, mode):
+def draw_settings(ctrl_frame, settings, low_threshold, high_threshold, mode, tracker_mode):
     if mode == 'FULL_MANUAL':
         full_manual = [True]
         manual_focus = [False]
@@ -202,6 +203,8 @@ def draw_settings(ctrl_frame, settings, low_threshold, high_threshold, mode):
         fine = [False]
         paused = [True]
 
+    tracker_box = [tracker_mode == 'KCF']
+
     settings.begin(ctrl_frame)
     if not settings.isMinimized():
         cvui.trackbar(settings.width() - 20, low_threshold, 5, 150)
@@ -212,10 +215,16 @@ def draw_settings(ctrl_frame, settings, low_threshold, high_threshold, mode):
         cvui.checkbox('Coarse AutoFocus', coarse)
         cvui.checkbox('Fine AutoFocus', fine)
         cvui.checkbox('Paused', paused)
+        cvui.checkbox('KCF Tracker', tracker_box)
         if cvui.button('Force Macro Focus Sweep'):
             macro_resweep = True
         else:
             macro_resweep = False
+
+        if cvui.button('Liquid Lens Focus Sweep'):
+            ll_resweep = True
+        else:
+            ll_resweep = False
     settings.end()
 
     # PAUSED -> {COARSE | FULL_MANUAL | MANUAL_FOCUS}
@@ -261,7 +270,12 @@ def draw_settings(ctrl_frame, settings, low_threshold, high_threshold, mode):
         elif manual_focus[0]:
             mode = 'MANUAL_FOCUS'
 
-    return mode, macro_resweep
+    if tracker_box[0]:
+        tracker_type = 'KCF'
+    else:
+        tracker_type = 'CANNY'
+
+    return mode, tracker_type, macro_resweep, ll_resweep
 
 
 def apply_canny(frame, high, low, kernel):
@@ -282,11 +296,71 @@ def sigint_handler(signo, stack_frame):
     keep_running = False
 
 
+def roi_tool(frame, anchor, roi):
+    # The function 'bool cvui.mouse(int query)' allows you to query the mouse for events.
+    # E.g. cvui.mouse(cvui.DOWN)
+    #
+    # Available queries:
+    #	- cvui.DOWN: any mouse button was pressed. cvui.mouse() returns true for single frame only.
+    #	- cvui.UP: any mouse button was released. cvui.mouse() returns true for single frame only.
+    #	- cvui.CLICK: any mouse button was clicked (went down then up, no matter the amount of frames in between). cvui.mouse() returns true for single frame only.
+    #	- cvui.IS_DOWN: any mouse button is currently pressed. cvui.mouse() returns true for as long as the button is down/pressed.
+
+    drawing = False
+    new_bb = False
+
+    # Did any mouse button go down?
+    if cvui.mouse(cvui.DOWN):
+        # Position the anchor at the mouse pointer.
+        anchor.x = cvui.mouse().x / p.DISPLAY_RESCALE_TRACK_SPOTTER
+        anchor.y = cvui.mouse().y / p.DISPLAY_RESCALE_TRACK_SPOTTER
+
+        # Inform we are working, so the ROI window is not updated every frame
+        drawing = True
+
+
+    # Is any mouse button down (pressed)?
+    if cvui.mouse(cvui.IS_DOWN):
+        # Adjust roi dimensions according to mouse pointer
+        width = cvui.mouse().x / p.DISPLAY_RESCALE_TRACK_SPOTTER - anchor.x
+        height = cvui.mouse().y / p.DISPLAY_RESCALE_TRACK_SPOTTER - anchor.y
+
+        roi.x = anchor.x + width if width < 0 else anchor.x
+        roi.y = anchor.y + height if height < 0 else anchor.y
+        roi.width = abs(width)
+        roi.height = abs(height)
+
+        # Show the roi coordinates and size
+        cvui.printf(frame, roi.x + 5, roi.y + 5, 0.3, 0xff0000, '(%d,%d)', roi.x, roi.y)
+        cvui.printf(frame, cvui.mouse().x / p.DISPLAY_RESCALE_TRACK_SPOTTER + 5, cvui.mouse().y / p.DISPLAY_RESCALE_TRACK_SPOTTER + 5, 0.3, 0xff0000, 'w:%d, h:%d', roi.width, roi.height)
+
+    # Was the mouse clicked (any button went down then up)?
+    if cvui.mouse(cvui.UP):
+        # We are done working with the ROI.
+        drawing = False
+        if roi.width > 25 and roi.height > 25:
+            new_bb = True
+
+    # Ensure ROI is within bounds
+    frameRows, frameCols, frameChannels = frame.shape
+    roi.x = 0 if roi.x < 0 else roi.x
+    roi.y = 0 if roi.y < 0 else roi.y
+    roi.width = roi.width + frame.cols - (roi.x + roi.width) if roi.x + roi.width > frameCols else roi.width
+    roi.height = roi.height + frame.rows - (roi.y + roi.height) if roi.y + roi.height > frameRows else roi.height
+
+    # Render the roi
+    cvui.rect(frame, roi.x, roi.y, roi.width, roi.height, 0xff0000)
+
+    return anchor, roi, drawing, new_bb
+
+
 def main():
 
     global keep_running
     global BYPASS_LL_ESTIMATE
 
+    # This is for saving video *with* detection boxes on it
+    # To save raw video, use the CameraSaver.py script
     save_video = False
     if save_video:
         sz = (p.IMG_WIDTH_SPOTTER, p.IMG_HEIGHT_SPOTTER)
@@ -297,7 +371,7 @@ def main():
     signal.signal(signal.SIGINT, sigint_handler)
 
     ctrl_frame = np.zeros((400, 300, 3), np.uint8)
-    settings = EnhancedWindow(10, 50, 270, 270, 'Settings')
+    settings = EnhancedWindow(10, 50, 270, 320, 'Settings')
     control = EnhancedWindow(10, 300, 270, 100, 'Control')
     cvui.init(p.CTRL_WINDOW_NAME)
     cvui.init(p.VIDEO_WINDOW_NAME)
@@ -319,6 +393,12 @@ def main():
     target_track_init = False
     MODE = 'PAUSED'
     fine_submode = 'UNINITIALIZED'
+    tracker_type = 'KCF'  # options are KCF or CANNY
+    kcf_box_anchor = cvui.Point()
+    kcf_roi = cvui.Rect(0, 0, 0, 0)
+    kcf_tracker_init = False
+    target_pos_obs = None
+
     macro_sharpness = 0
 
     while keep_running:
@@ -351,28 +431,62 @@ def main():
             print('Timed Out!')
             time.sleep(1)
             continue
+        frame = cv2.resize(frame, (1920, 1080), interpolation=cv2.INTER_LINEAR)
 
-        contours = process_contours(frame, low_threshold[0], high_threshold[0])
+        if tracker_type == 'CANNY':
+            # This is what is required to update the track based on bounding box detection
+            ############################################################################################################
+            contours = process_contours(frame, low_threshold[0], high_threshold[0])
 
-        cvui.context(p.VIDEO_WINDOW_NAME)
-        if cvui.mouse(cvui.IS_DOWN):
-            (target_pos, feature_delta) = reset_target_selection()
-            target_pos_slow = target_pos.copy()
-            target_track_init = True
+            cvui.context(p.VIDEO_WINDOW_NAME)
+            if cvui.mouse(cvui.IS_DOWN):
+                (target_pos, feature_delta) = reset_target_selection()
+                target_pos_slow = target_pos.copy()
+                target_track_init = True
 
-        feature_delta += get_feature_2delta()
+            feature_delta += get_feature_2delta()
 
-        (br_centers, target_pos_obs, roi_msg) = determine_roi(frame, contours, target_pos)
+            (br_centers, target_pos_obs, roi_msg) = determine_roi(frame, contours, target_pos)
+            ############################################################################################################
+
+        elif tracker_type == 'KCF':
+            # kcf code
+            cvui.context(p.VIDEO_WINDOW_NAME)
+            anchor, kcf_roi, drawing, new_bb = roi_tool(frame, kcf_box_anchor, kcf_roi)
+            if drawing:
+                kcf_tracker_init = False
+            print('drawing: %d' % drawing)
+            print('new_bb: %d' % new_bb)
+            roi_msg = m.SetFocusROI(None, None)
+            if new_bb:
+                kcf_tracker_init = True
+                kcf_tracker = cv2.TrackerKCF_create()
+                kcf_tracker.init(frame, (kcf_roi.x, kcf_roi.y, kcf_roi.width, kcf_roi.height))
+            elif kcf_tracker_init:
+                ok, new_roi = kcf_tracker.update(frame)
+                x1 = kcf_roi.x
+                y1 = kcf_roi.y
+                w = kcf_roi.width
+                h = kcf_roi.height
+                target_pos_obs = np.array([x1 + w/2., y1 + h/2])
+                kcf_roi = cvui.Rect(new_roi[0], new_roi[1], new_roi[2], new_roi[3])
+                roi_msg = m.SetFocusROI((x1, y1), (x1 + w, y1 + h))
+        else:
+            print('Invalid tracker mode: %s' % tracker_type)
+            keep_running = False
+
         roi_socket.send_pyobj(roi_msg)  # tell the LL camera which ROI to focus
 
+        # The tracker makes a determination in pixel space, then we may decide to filter it. We then determine the
+        # dx and dy based on the distance between the feature of interest and the macro lens center
         # how much do we need to move in pixel-space?
-        # Note dx and dy are 0if there are no target tracks
-        (dx, dy, target_track_ok) = calculate_movement_offsets(frame, br_centers, target_pos, target_pos_obs, target_pos_slow, feature_delta)
-
-        # draw dots on frame centers
-        cv2.circle(frame, (int(p.IMG_DISP_WIDTH_SPOTTER / 2), int(p.IMG_DISP_HEIGHT_SPOTTER / 2)), 5, (0, 0, 255), -1)  # center of frame
-        cv2.circle(frame, (p.MACRO_LL_CENTER[0], p.MACRO_LL_CENTER[1]), 5, (255, 0, 255), -1)  # center of macro frame frame
-
+        # Note dx and dy are 0 if there are no target tracks
+        if target_pos_obs is not None:
+            (dx, dy, target_track_ok) = calculate_movement_offsets(frame, target_pos, target_pos_obs, target_pos_slow, feature_delta)
+        else:
+            dx = 0
+            dy = 0
+            target_track_ok = False
 
         # Now we have a giant state machine. We need to structure the code this way, because we want 2D tracking and
         # user interaction to update even when we are waiting on some slower action to occur related to object depth
@@ -393,6 +507,9 @@ def main():
             dz = manual_focus_update()
         elif MODE == 'FULL_MANUAL':
             (dx, dy) = get_feature_2delta()
+            dx = 10 * dx
+            dy = 10 * dy
+            print('FULL_MANUAL %f, %f' % (dx, dy))
             dz = manual_focus_update()
         elif MODE == 'COARSE':
             print('MODE is COARSE')
@@ -499,13 +616,12 @@ def main():
                         stage_z_dir = -1 * stage_z_dir
                     dz = 3 * stage_z_dir
 
-                    # We have an invalid mode, which should never happen and it means there's an issue with the code
+                # We have an invalid mode, which should never happen and it means there's an issue with the code
                 else:
                     print('fine_submode in illegal state %s!' % fine_submode)
                     sys.exit(1)
             else:
                 print('No target track!')
-
 
         # In an invalid mode, so we should quit and fix the problem with the code
         else:
@@ -516,17 +632,33 @@ def main():
 
         frame = cv2.resize(frame, (p.IMG_DISP_WIDTH_SPOTTER, p.IMG_DISP_HEIGHT_SPOTTER))
 
+        # draw dots on frame centers
+        cv2.circle(frame, (int(p.IMG_DISP_WIDTH_SPOTTER / 2), int(p.IMG_DISP_HEIGHT_SPOTTER / 2)), 5, (0, 0, 255), -1)  # center of frame
+        cv2.circle(frame, (p.MACRO_LL_CENTER[0], p.MACRO_LL_CENTER[1]), 5, (255, 0, 255), -1)  # center of macro frame frame
+
         cvui.update(p.VIDEO_WINDOW_NAME)
         cv2.imshow(p.VIDEO_WINDOW_NAME, frame)
         if save_video:
             vout.write(frame)
 
         cvui.context(p.CTRL_WINDOW_NAME)
-        MODE, macro_resweep = draw_settings(ctrl_frame, settings, low_threshold, high_threshold, MODE)
+        MODE, tracker_type, macro_resweep, ll_resweep = draw_settings(ctrl_frame, settings, low_threshold, high_threshold, MODE, tracker_type)
         if macro_resweep:
             BYPASS_LL_ESTIMATE = True
             MODE = 'FINE'
             fine_submode = 'UNINITIALIZED'
+
+        if ll_resweep:
+            if stage_z is not None:
+                print('Liquid Lens Refocus!')
+                dist_to_tank = (300 - stage_z) + p.STAGE_TANK_OFFSET
+                ll_max = 2953.5*dist_to_tank**-0.729
+                ll_min = 2953.5*(dist_to_tank + p.TANK_DEPTH_MM)**-0.729
+                print('llmin, llmax: (%f, %f)' % (ll_min, ll_max))
+                af_pub.send_pyobj(m.AutofocusMessage(ll_min, ll_max, 1))
+            else:
+                print('Cannot refocus liquid lens until stage node is running')
+
         cvui.update(p.CTRL_WINDOW_NAME)
         cv2.imshow(p.CTRL_WINDOW_NAME, ctrl_frame)
         cv2.waitKey(1)
