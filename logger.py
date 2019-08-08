@@ -3,9 +3,12 @@ import signal
 import time
 import os
 
+import win32file
+
 import Parameters as p
 
 keep_running = True
+
 
 def sigint_handler(signo, stack_frame):
     global keep_running
@@ -42,19 +45,25 @@ def main():
     track_deltas_sub.connect('tcp://%s:%d' % (p.TRACK_IP, p.TRACK_PORT))
     track_deltas_sub.setsockopt_string(zmq.SUBSCRIBE, '')
 
+    wopen = lambda fn: win32file.CreateFile(fn, win32file.GENERIC_WRITE, win32file.FILE_SHARE_READ, None, win32file.OPEN_ALWAYS, win32file.FILE_ATTRIBUTE_NORMAL, None)
 
-    fo_stage_position = open(os.path.join('logs', 'stage_position', 'current.csv'))
-    fo_ll_setting = open(os.path.join('logs', 'll_setting', 'current.csv'))
-    fo_sharpness_macro = open(os.path.join('logs', 'sharpness_macro', 'current.csv'))
-    fo_track_estimate = open(os.path.join('logs', 'track_estimate', 'current.csv'))
-    fo_track_deltas = open(os.path.join('logs', 'track_deltas', 'current.csv'))
+    fo_stage_position = wopen(os.path.join('logs', 'stage_position', 'current.csv'))
+    fo_ll_setting = wopen(os.path.join('logs', 'll_setting', 'current.csv'))
+    fo_sharpness_macro = wopen(os.path.join('logs', 'sharpness_macro', 'current.csv'))
+    fo_track_estimate = wopen(os.path.join('logs', 'track_estimate', 'current.csv'))
+    fo_track_deltas = wopen(os.path.join('logs', 'track_deltas', 'current.csv'))
 
-    # Note sure if this is compatible with gnuplot?
-    fo_stage_position.write('time,x,y,z')
-    fo_ll_setting.write('time,ll_setting')
-    fo_sharpness_macro.write('time,macro_sharpness')
-    fo_track_estimate.write('time,track_x,track_y')
-    fo_track_deltas.write('time,dx,dy,dz')
+    #fo_stage_position.write('time,x,y,z')
+    #fo_ll_setting.write('time,ll_setting')
+    #fo_sharpness_macro.write('time,macro_sharpness')
+    #fo_track_estimate.write('time,track_x,track_y')
+    #fo_track_deltas.write('time,dx,dy,dz')
+
+    win32file.WriteFile(fo_stage_position, 'time,x,y,z')
+    win32file.WriteFile(fo_ll_setting, 'time,ll_setting')
+    win32file.WriteFile(fo_sharpness_macro, 'time,macro_sharpness')
+    win32file.WriteFile(fo_track_estimate, 'time,track_x,track_y')
+    win32file.WriteFile(fo_track_deltas, 'time,dx,dy,dz')
 
     while keep_running:
 
@@ -62,7 +71,8 @@ def main():
             pos_msg = position_sub.recv_string()
             nums = [float(x) for x in pos_msg.split(' ')]
             data_line = '%f,%f,%f,%f\n' % (time.time(), nums[0], nums[1], nums[2])
-            fo_stage_position.write(data_line)
+            #fo_stage_position.write(data_line)
+            win32file.WriteFile(fo_stage_position, data_line)
         except zmq.Again:
             pass
         except Exception as ex:
@@ -73,7 +83,8 @@ def main():
             ll_msg = ll_sub.recv_string()
             num = float(ll_msg)
             data_line = '%f,%f\n' % (time.time(), num)
-            fo_ll_setting.write(data_line)
+            #fo_ll_setting.write(data_line)
+            win32file.WriteFile(fo_ll_setting, data_line)
         except zmq.Again:
             pass
         except Exception as ex:
@@ -84,7 +95,8 @@ def main():
             sharpness_macro_msg = sharpness_macro_sub.recv_string()
             num = float(sharpness_macro_msg)
             data_line = '%f,%f\n' % (time.time(), num)
-            fo_sharpness_macro.write(data_line)
+            #fo_sharpness_macro.write(data_line)
+            win32file.WriteFile(fo_sharpness_macro, data_line)
         except zmq.Again:
             pass
         except Exception as ex:
@@ -95,7 +107,8 @@ def main():
             track_estimate_msg = track_estimate_sub.recv_string()
             num = [float(x) for x in track_estimate_msg.split(' ')]
             data_line = '%f,%f,%f\n' % (time.time(), num[0], num[1])
-            fo_track_estimate.write(data_line)
+            #fo_track_estimate.write(data_line)
+            win32file.WriteFile(fo_track_estimate, data_line)
         except zmq.Again:
             pass
         except Exception as ex:
@@ -106,7 +119,8 @@ def main():
             track_deltas_msg = track_deltas_sub.recv_string()
             num = [float(x) for x in track_deltas_msg.split(' ')]
             data_line = '%f,%f,%f,%f\n' % (time.time(), num[0], num[1], num[2])
-            fo_track_deltas.write(data_line)
+            #fo_track_deltas.write(data_line)
+            win32file.WriteFile(fo_track_deltas, data_line)
         except zmq.Again:
             pass
         except Exception as ex:
