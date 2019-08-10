@@ -58,6 +58,7 @@ def main():
             time.sleep(1)
 
     stage_zero_offset = np.array([stage_x, stage_y, -stage_z], ndmin=2).T
+    np.save('tank_corners_offset.npy', stage_zero_offset)
 
     while keep_running:
 
@@ -186,6 +187,7 @@ def main():
             world_points[:, point_ix] = mp.squeeze()
 
         print(world_points)
+        np.save('tank_corners.npy', world_points)
 
         # phase 3: Compute world-frame corners and update as stage moves
         stage_pos_cur = np.zeros((3, 1))

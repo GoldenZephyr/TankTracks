@@ -114,3 +114,4 @@ MACRO_LL_CENTER = (190, 270)  # center of macro FoV in LL frame (pixels)
 MACRO_FOV_OFFSET = (MACRO_LL_CENTER[0] - IMG_WIDTH_SPOTTER / 2, MACRO_LL_CENTER[1] - IMG_HEIGHT_SPOTTER / 2)  # offset (in LL pixel space) of the Macro FoV relative to spotter FoV
 
 BYPASS_LL_ESTIMATE = False
+

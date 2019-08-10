@@ -12,6 +12,7 @@ class ThresholdTracker:
         self.target_pos = None
         self.roi = None  # x1, y1, w, h
         self.box_anchor = None
+        self.show_binary = None
 
 
 def update_threshold_tracker(frame_disp, tracker_state):
@@ -64,7 +65,8 @@ def update_threshold_tracker(frame_disp, tracker_state):
             target_pos_obs = None
             frame = cv2.cvtColor(frame, cv2.COLOR_GRAY2BGR)
 
-        #frame_disp[:] = frame[:]
+        if tracker_state.show_binary[0]:
+            frame_disp[:] = frame[:]
 
     else:
         target_pos_obs = None

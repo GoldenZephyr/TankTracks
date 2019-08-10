@@ -25,7 +25,7 @@ class EnhancedWindow:
 		self.__deltaY = 0
 		self.__deltaX = 0
 		self.__isMoving = False
-		self.__minimized = False;
+		self.__minimized = True
 		self.__minimizable = minimizable
 
 	def begin(self, frame):
